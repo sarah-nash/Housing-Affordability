@@ -1,0 +1,227 @@
+---
+title: "zillow cleaning"
+author: "Sarah Nash"
+date: "`r Sys.Date()`"
+output: html_document
+---
+## Cleaning minumum wage data 
+```{r}
+wages <- read.csv("Minimum Wage Data.csv") 
+w <- wages %>%
+  select("Year", "State", "FedMW" = "Federal.Minimum.Wage", "StateMW" = "Effective.Minimum.Wage") %>%
+  mutate(StateAbbr =  state.abb[match(State,state.name)])
+
+
+```
+ Not much to clean; write to csv
+```{r}
+write.csv(w, "MinWage_clean.csv")
+```
+
+## Cleaning 2-bedroom zillow house price data 
+```{r}
+df <- read.csv("zillow_state_sales_2bed.csv")
+
+dates <- colnames(df)[6:ncol(df)]
+
+# Change the columns names to be iso format.
+colnames(df)[6:ncol(df)] <- lapply(dates, function(x){str_replace_all(substr(x, 2,11), "\\.", "-") })
+```
+
+Convert to long format 
+```{r}
+df_long <- df %>%
+  gather(date, price, `2000-01-31` : `2023-04-30`) %>%
+  select(-c(RegionID, SizeRank, RegionType, StateName)) %>%
+  rename(State=RegionName)
+
+  
+df_long  
+```
+
+Write to a csv 
+```{r}
+# write.csv(df_long, "zillow_sales_2bed_clean.csv")
+```
+
+
+## Cleaning the single family home data 
+
+Import the dataset 
+```{r}
+df2 <- read.csv("zillow_state_sales.csv")
+```
+
+Change the date format to ISO 
+```{r}
+dates <- colnames(df2)[6:ncol(df2)]
+colnames(df2)[6:ncol(df2)] <- lapply(dates, function(x){str_replace_all(substr(x, 2,11), "\\.", "-") })
+```
+
+Convert to long format 
+
+```{r}
+df2_long <- df2 %>%
+  gather(date, price, `2000-01-31` : `2023-04-30`) %>%
+  select(-c(RegionID, SizeRank, RegionType, StateName)) %>%
+  rename(State=RegionName)
+
+  
+df2_long  
+```
+
+Write to a new csv 
+```{r}
+write.csv(df2_long, "zillow_sales_clean.csv")
+```
+
+##
+
+Worth of income in relation to housing prices 
+Metrics: Hours on given wage to pay off house (bad) 
+Number of years at a wage to pay off a house? 
+Percent of wage to pay off house (0% interest) in 30 years.
+Number of years to buy a house at 33% of wage? 
+% of income to pay in 30 years. 
+```{r}
+test <- df2_long[df2_long$State=="Florida",] %>%
+  filter(grepl("-01-31", date)) %>%
+  mutate("date" = substr(date, 1, 4)) %>%
+  rename("Year" = "date")
+  # mutate("Year" = substr(date, 1, 4))
+```
+
+
+```{r}
+
+wage_df <- read.csv("MinWage_clean.csv")
+w <- wage_df %>% 
+  filter (State == "New York") %>%
+  select("Year","StateMW") # %>%
+  # plot_ly(type = "scatter", mode = "lines", x =~Year, y =~ State.Minimum.Wage*52*40)
+```
+
+```{r}
+combined <- merge(test, w, by="Year") 
+```
+
+```{r}
+plot_ly(
+  data = combined, 
+  type = "scatter", 
+  mode = "line",
+  x = ~Year, 
+  y = ~price/(StateMW*52*40*30) # This is prop. of income for a 30 year, 0 interest mortgage. 
+)
+```
+
+
+
+
+## Cleaning the median income data
+```{r}
+incomedf <- readxl::read_xlsx("income_by_state.xlsx", skip=7) 
+incomedf2_current <- incomedf[c(2:53),] %>% select(1, seq(2,ncol(incomedf), by=2)) 
+incomedf2_2020 <- incomedf[c(57:nrow(incomedf)),] %>% select(1, seq(2,ncol(incomedf), by=2)) 
+```
+Convert to a long format of (State, Year, \$ Current, \$ 2020 ), 
+also need to chop off col numbers from the year column.... 
+```{r}
+inc_cur_long <- gather(incomedf2_current, Year, 'Median Income(Current)', "2020":"1984 (19)")
+inc_2020_long <- gather(incomedf2_2020, Year, 'Median Income(2020)', "2020":"1984 (19)")
+
+median_income_df <- merge(inc_cur_long, inc_2020_long, by=c("State", "Year"))
+median_income_df$Year <- str_split_i(median_income_df$Year, " ",1)
+```
+Restrict to information I need for the shiny app
+```{r}
+mi_df <- median_income_df %>%
+  filter(Year %in% c(2000:2023)) %>%
+  select(-c("Median Income(2020)")) %>%
+  rename("Med.Income" = "Median Income(Current)") %>%
+  mutate(StateAbbr =  state.abb[match(State,state.name)])
+
+```
+Save to a csv 
+```{r}
+write.csv(mi_df, "MedIncome_clean.csv")
+```
+
+
+## Test Plots 
+```{r}
+state <- c("Florida")
+# ifelse(input$`2brselectpage4` == "family", mydata <- housingdf, mydata <- housingdf.2br)
+
+plotdata <-  df_long %>% filter(State %in% state) %>% na.omit()
+plot(x=time(plotdata$date), y=plotdata$price)
+abline(reg=lm(price ~ time(date), data=plotdata))
+
+plotdata$lm <- plotdata %>%
+  lm(price ~ time(date),.) %>%
+  fitted.values()
+
+
+colors <- c("red", "blue", "green", "pink", "black")
+colors <- colors[1:length(state)]
+m <- lm(price~date,data = plotdata)
+p <- plot_ly(data = plotdata,
+             type = "scatter", 
+             mode = "lines", 
+             color = ~State,
+             colors = colors,
+             # trendline = "ols",
+             x = ~date, 
+             y = ~price)
+p %>% add_trace(x =~date, y=~lm, mode="lines")
+```
+
+## Another Test Plot 
+```{r}
+test <- df2_long %>%
+  filter(grepl("-01-31", date)) %>%
+  mutate("date" = substr(date, 1, 4)) %>%
+  rename("Year" = "date")
+scatter_df <- merge(test, median_income_df, by=c("Year", "State")) %>% na.omit()
+cust<- scatter_df[scatter_df$Year==2010,]$price / as.double(scatter_df[scatter_df$Year==2010,]$`Median Income(Current)`)
+plot_ly(
+  data = scatter_df[scatter_df$Year == 2010,], 
+  x = ~price, 
+  y = ~`Median Income(Current)`,
+  type = "scatter",
+  mode = "markers",
+  color = ~ cust,
+
+  marker = list(
+    # colorscale="Reds",
+    size = 12,
+    line = list(color = "black", width = 0.5),
+    reversescale =TRUE,
+    showScale = TRUE
+    ),
+    colors="YlOrRd"
+
+
+    # opacity = ~ price / as.double(`Median Income(Current)`)
+  # opacity=0.5,
+  # colors = colorRamp(c("lightblue", "pink"))
+
+) %>%
+  colorbar(title='Affordability',orientation='h',
+           tickmode="array", ticktext = c("low", "medium", "high"),
+           tickvals=c(min(cust), (min(cust) + max(cust))/2, max(cust)),
+           x=0.4, y= -0.3) %>%
+  layout(xaxis= list(title="House Price",tickprefix = '$'),
+         yaxis = list(title="Median Income", tickprefix='$', tickformat='$' ))
+
+# ) %>% hide_colorbar()
+
+```
+
+
+```{r}
+library(bannerCommenter)
+banner("Data Input" , emph = FALSE,bandChar = "-")
+open_box("test")
+```
+

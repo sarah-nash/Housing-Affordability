@@ -1,0 +1,13 @@
+name: HousingAffordability
+title: HousingAffordability
+username:
+account: snash
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9144723
+bundleId: 7238351
+url: https://snash.shinyapps.io/HousingAffordability/
+when: 1684502768.44844
+lastSyncTime: 1684502768.44847
+asMultiple: FALSE
+asStatic: FALSE
